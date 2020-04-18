@@ -1516,6 +1516,55 @@ static void finger_image_download_read_callback(struct fp_img_dev *idev, int sta
 	fpi_ssm_next_state(ssm);
 }
 
+static void verify_callback1(struct fp_img_dev *idev, int status, void *data)
+{
+    struct fpi_ssm *ssm = data;
+    // XXX - jeff struct image_download_t *imgdown = ssm->priv;
+    struct image_download_t *imgdown = fpi_ssm_get_user_data(ssm);
+    // XXX - jeff struct vfs_dev_t *vdev = VFS_DEV_FROM_SSM(ssm);
+    struct vfs_dev_t *vdev = VFS_DEV_FROM_IMG(idev);
+//	switch (fpi_ssm_get_cur_state(ssm)) {
+    int offset = (fpi_ssm_get_cur_state(ssm) == IMAGE_DOWNLOAD_STATE_1) ? 0x12 : 0x06;
+    int data_size = vdev->buffer_length - offset;
+
+    if (status != LIBUSB_TRANSFER_COMPLETED) {
+        fp_err("Image download failed at state %d", fpi_ssm_get_cur_state(ssm));
+        if (status != LIBUSB_TRANSFER_CANCELLED)
+            fpi_imgdev_session_error(idev, -EIO);
+
+        // fpi_ssm_mark_aborted(ssm, status);
+	fpi_ssm_mark_failed(ssm,status); // XXX jeff - not sure 2nd arg is correct
+        return;
+    }
+
+    fpi_ssm_next_state(ssm);
+}
+
+static void verify_callback2(struct fp_img_dev *idev, int status, void *data)
+{
+    // struct vfs_dev_t *vdev = idev->priv;
+    struct vfs_dev_t *vdev = VFS_DEV_FROM_IMG(idev);
+    struct fpi_ssm *ssm = data;
+    int interrupt_type;
+
+    if (status == LIBUSB_TRANSFER_COMPLETED) {
+        interrupt_type = translate_interrupt(vdev->buffer,
+                                             vdev->buffer_length);
+        if (interrupt_type == VFS_SCAN_AUTHENTICATED) {
+            idev->action_result = FP_VERIFY_MATCH;
+                } else {
+                        idev->action_result = FP_VERIFY_NO_MATCH;
+        }
+        fpi_ssm_mark_completed(ssm);
+        fpi_imgdev_report_finger_status(idev, FALSE);
+    } else if (status == LIBUSB_TRANSFER_CANCELLED) {
+        fpi_ssm_mark_completed(ssm);
+    } else {
+        fpi_ssm_mark_failed(ssm, status);
+    }
+}
+
+
 static void finger_image_download_ssm(struct fpi_ssm *ssm, struct fp_dev *dev, void *data)
 {
 	struct fp_img_dev *idev = FP_IMG_DEV(dev);
@@ -1540,6 +1589,20 @@ static void finger_image_download_ssm(struct fpi_ssm *ssm, struct fp_dev *dev, v
 
 		break;
 
+        case CHECK_DB:
+                async_data_exchange(idev, DATA_EXCHANGE_ENCRYPTED,
+                                    VERIFY_SEQUENCE.msg,
+                                    VERIFY_SEQUENCE.msg_length,
+                                    vdev->buffer,
+                                    1024,
+                                    verify_callback1,
+                                    ssm);
+                break;
+        case CHECK_DB_RESULT:
+                async_read_from_usb(idev, VFS_READ_INTERRUPT,
+                                    vdev->buffer, VFS_USB_INTERRUPT_BUFFER_SIZE,
+                                    verify_callback2, ssm);
+                break;
 
 	case IMAGE_DOWNLOAD_STATE_SUBMIT:
 		finger_image_submit(idev, imgdown);
@@ -2064,6 +2127,7 @@ static void dev_close(struct fp_img_dev *idev)
 /* Usb id table of device */
 static const struct usb_id id_table[] = {
 	{ .vendor = 0x138a, .product = 0x0090 },
+	{.vendor = 0x138a, .product = 0x0097},
 	{ 0, 0, 0, },
 };
 

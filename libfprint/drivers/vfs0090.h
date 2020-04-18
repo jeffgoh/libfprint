@@ -88,6 +88,11 @@ enum SCAN_STATES {
 	SCAN_STATE_SUCCESS,
 	SCAN_STATE_SUCCESS_LOW_QUALITY,
 
+        SCAN_STATE_HANDLE_SCAN_ERROR,
+        SCAN_STATE_ERROR_LED_BLINK,
+        SCAN_STATE_REACTIVATE_REQUEST,
+        SCAN_STATE_REACTIVATION_DONE,
+
 	SCAN_STATE_LAST
 };
 
@@ -101,6 +106,8 @@ enum VFS_SCAN_INTERRUPTS {
 	VFS_SCAN_COMPLETED,
 	VFS_SCAN_SUCCESS,
 	VFS_SCAN_SUCCESS_LOW_QUALITY,
+        VFS_SCAN_AUTHENTICATED,
+
 	VFS_SCAN_UNKNOWN = 100,
 };
 
@@ -115,6 +122,8 @@ enum IMAGE_DOWNLOAD_STATES {
 	IMAGE_DOWNLOAD_STATE_1,
 	IMAGE_DOWNLOAD_STATE_2,
 	IMAGE_DOWNLOAD_STATE_3,
+        CHECK_DB,
+        CHECK_DB_RESULT,
 	IMAGE_DOWNLOAD_STATE_SUBMIT,
 	IMAGE_DOWNLOAD_STATE_GREEN_LED_BLINK,
 	IMAGE_DOWNLOAD_STATE_AFTER_GREEN_LED_BLINK,
@@ -161,6 +170,11 @@ struct data_exchange_t {
 };
 
 const unsigned char TEST_SEED[] = "VirtualBox\0" "0";
+
+static const unsigned char VERIFY_SEQUENCE_MSG1[] = {
+        0x5e, 0x02, 0xff, 0x03, 0x00, 0x05, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x00, 0x00
+};
 
 static const unsigned char INIT_SEQUENCE_MSG1[] = { 0x01 };
 
@@ -290,6 +304,16 @@ static const struct data_exchange_t INIT_SEQUENCES[] = {
 		.rsp_length = -1,
 	},
 };
+
+static const struct data_exchange_t VERIFY_SEQUENCE =
+        {
+                .msg = VERIFY_SEQUENCE_MSG1,
+                .msg_length = G_N_ELEMENTS(VERIFY_SEQUENCE_MSG1),
+                .rsp = NULL,
+                .rsp_length = -1 /* 38 normally */,
+        }
+;
+
 
 static const unsigned char PRE_KEY[] = {
 	0x71, 0x7c, 0xd7, 0x2d, 0x09, 0x62, 0xbc, 0x4a,
